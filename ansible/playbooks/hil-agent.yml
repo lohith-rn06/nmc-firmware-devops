@@ -1,0 +1,5 @@
+# Provision the bare-metal Jenkins agent that sits on the lab VLAN next to the rack.
+- name: HIL Jenkins agent
+  hosts: hil_agents
+  become: true
+  roles: [hil_agent]

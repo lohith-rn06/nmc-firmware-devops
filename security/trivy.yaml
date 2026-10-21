@@ -1,0 +1,7 @@
+severity: [CRITICAL, HIGH]
+ignore-unfixed: true
+exit-code: 0              # the pipeline passes --exit-code 1 on the gating call
+scan:
+  scanners: [vuln, secret, misconfig]
+vulnerability:
+  ignorefile: security/.trivyignore

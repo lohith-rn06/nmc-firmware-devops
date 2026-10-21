@@ -1,0 +1,9 @@
+title = "NMC gitleaks config"
+[extend]
+useDefault = true
+[[rules]]
+id = "nmc-snmp-community"
+description = "Hard-coded SNMP community string"
+regex = '''(?i)snmp[_-]?community\s*[:=]\s*["'][^"'$]{4,}["']'''
+[allowlist]
+paths = ['''docs/''', '''firmware/tests/''', '''docker/docker-compose.yml''']

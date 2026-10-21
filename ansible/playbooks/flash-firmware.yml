@@ -1,0 +1,37 @@
+# Upload + install firmware on every card in the rack, one card at a time.
+#   ansible-playbook playbooks/flash-firmware.yml -e fw_dir=/path/to/dist
+- name: Flash NMC firmware on HIL cards
+  hosts: nmc_cards
+  serial: 1
+  gather_facts: false
+  vars:
+    fw_image: "{{ lookup('ansible.builtin.fileglob', fw_dir ~ '/nmc-' ~ nmc_variant ~ '-*.nmcfw') }}"
+  tasks:
+    - name: Image for this variant exists
+      ansible.builtin.assert:
+        that: fw_image | length > 0
+        fail_msg: "no .nmcfw for {{ nmc_variant }} in {{ fw_dir }}"
+
+    - name: Verify signature before it ever touches a card
+      ansible.builtin.command: "openssl dgst -sha256 -verify {{ fw_dir }}/signing-public.pem -signature {{ fw_image }}.sig {{ fw_image }}"
+      changed_when: false
+
+    - name: Upload firmware
+      ansible.builtin.uri:
+        url: "https://{{ nmc_ip }}:{{ nmc_https_port }}/api/firmware"
+        method: POST
+        src: "{{ fw_image }}"
+        headers: { Content-Type: application/octet-stream }
+        user: "{{ lookup('env', 'NMC_ADMIN_USER') }}"
+        password: "{{ lookup('env', 'NMC_ADMIN_PASS') }}"
+        force_basic_auth: true
+        validate_certs: "{{ nmc_validate_certs }}"
+        status_code: [200, 202]
+        timeout: 300
+
+    - name: Wait for the card to reboot into the new image
+      ansible.builtin.wait_for:
+        host: "{{ nmc_ip }}"
+        port: "{{ nmc_https_port }}"
+        delay: 30
+        timeout: 600

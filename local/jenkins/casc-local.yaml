@@ -1,0 +1,31 @@
+jenkins:
+  systemMessage: "NMC firmware CI - LOCAL LAB"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${JENKINS_ADMIN_PASSWORD}
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+unclassified:
+  globalLibraries:
+    libraries:
+      - name: nmc-shared-lib
+        defaultVersion: main
+        implicit: false
+        retriever:
+          modernSCM:
+            libraryPath: jenkins/shared-library/
+            scm:
+              git:
+                remote: ${NMC_REPO_URL}
+jobs:
+  - script: >
+      multibranchPipelineJob('nmc-firmware-local') {
+        branchSources { git { id('nmc'); remote(System.getenv('NMC_REPO_URL')) } }
+        factory { workflowBranchProjectFactory { scriptPath('jenkins/Jenkinsfile.docker') } }
+        orphanedItemStrategy { discardOldItems { numToKeep(5) } }
+      }

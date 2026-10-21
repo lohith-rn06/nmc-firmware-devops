@@ -1,0 +1,176 @@
+// =====================================================================================
+// NMC firmware - main CI pipeline (multibranch). Runs on Jenkins agents in EKS.
+// Every branch/PR: static analysis -> build 4 variants x 2 targets -> unit tests ->
+// package -> container images -> security scans -> ephemeral simulators -> integration
+// tests -> DAST. main/release/* additionally: sign with KMS (dev key) + publish to S3.
+// =====================================================================================
+@Library('nmc-shared-lib@main') _
+
+def VARIANTS = ['GVS', 'GVL', 'GVXL', 'GVXL-NAM']
+
+pipeline {
+  agent {
+    kubernetes {
+      yaml libraryResource('pod-templates/nmc-build-pod.yaml')
+      defaultContainer 'toolchain'
+    }
+  }
+  options {
+    timestamps()
+    ansiColor('xterm')
+    timeout(time: 90, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
+    disableConcurrentBuilds(abortPrevious: true)
+    skipDefaultCheckout()
+  }
+  parameters {
+    booleanParam(name: 'RUN_HIL', defaultValue: false, description: 'Flash real cards on the HIL rack (lab network only)')
+    booleanParam(name: 'KEEP_SIM_ENV', defaultValue: false, description: 'Keep the ephemeral simulator namespace after the build')
+  }
+  environment {
+    AWS_REGION   = 'ap-south-1'
+    ECR_REGISTRY = credentials('ecr-registry-url')         // e.g. 1234.dkr.ecr.ap-south-1.amazonaws.com
+    S3_BUILDS    = 'nmc-firmware-builds'
+  }
+
+  stages {
+    stage('Checkout & version') {
+      steps {
+        checkout scm
+        script {
+          env.NMC_VERSION = nmcVersion()
+          env.IMAGE_TAG   = env.NMC_VERSION.replace('+', '-')
+          def ns = "nmc-ci-" + env.BRANCH_NAME.toLowerCase().replaceAll('[^a-z0-9-]', '-')
+          env.SIM_NS      = ns.substring(0, Math.min(50, ns.length())).replaceAll('-+$', '')
+          currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.NMC_VERSION}"
+        }
+      }
+    }
+
+    stage('Pre-checks') {
+      parallel {
+        stage('Secrets scan') { steps { container('security') { sh 'gitleaks detect --source . --config security/gitleaks.toml --report-format sarif --report-path reports/gitleaks.sarif' } } }
+        stage('Format check')  { steps { sh 'find firmware/src firmware/include -name "*.[ch]" | xargs clang-format --dry-run --Werror' } }
+        stage('Commit lint')   { when { changeRequest() } steps { sh 'scripts/commit-lint.sh origin/${CHANGE_TARGET}' } }
+      }
+    }
+
+    stage('Static analysis (SAST)') {
+      parallel {
+        stage('cppcheck')   { steps { nmcStaticAnalysis tool: 'cppcheck' } }
+        stage('clang-tidy') { steps { nmcStaticAnalysis tool: 'clang-tidy' } }
+        stage('semgrep')    { steps { nmcStaticAnalysis tool: 'semgrep' } }
+        stage('flawfinder') { steps { nmcStaticAnalysis tool: 'flawfinder' } }
+      }
+      post { always { recordIssues enabledForFailure: true, qualityGates: [[threshold: 1, type: 'TOTAL_ERROR', unstable: false]],
+                       tools: [cppCheck(pattern: 'reports/cppcheck.xml'), clangTidy(pattern: 'reports/clang-tidy.log'),
+                               sarif(pattern: 'reports/semgrep.sarif', id: 'semgrep'), flawfinder(pattern: 'reports/flawfinder.txt')] } }
+    }
+
+    stage('Build & unit test') {
+      matrix {
+        axes { axis { name 'VARIANT'; values 'GVS', 'GVL', 'GVXL', 'GVXL-NAM' } }
+        stages {
+          stage('host build + tests + coverage') { steps { nmcBuild variant: env.VARIANT, mode: 'coverage' } }
+          stage('cross-compile for card CPU')    { steps { nmcBuild variant: env.VARIANT, mode: 'cross' } }
+          stage('binary hardening check')        { steps { sh "security/checksec.sh build/${env.VARIANT}-*/nmc-fw" } }
+          stage('package .nmcfw')                { steps { nmcPackage variant: env.VARIANT } }
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: false, testResults: 'reports/unit-*.xml'
+          recordCoverage tools: [[parser: 'COBERTURA', pattern: 'reports/coverage-*.xml']],
+                         qualityGates: [[threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']]
+        }
+      }
+    }
+
+    stage('SonarQube') {
+      steps {
+        withSonarQubeEnv('sonarqube') { container('sonar') { sh 'sonar-scanner -Dsonar.projectVersion=$NMC_VERSION -Dsonar.branch.name=$BRANCH_NAME' } }
+        timeout(time: 10, unit: 'MINUTES') { waitForQualityGate abortPipeline: true }
+      }
+    }
+
+    stage('SBOM & dependency scan (SCA)') {
+      steps {
+        container('security') {
+          sh '''
+            syft dir:firmware -o cyclonedx-json=reports/sbom-source.cdx.json
+            grype sbom:reports/sbom-source.cdx.json --fail-on high -o sarif > reports/grype-source.sarif
+          '''
+        }
+      }
+    }
+
+    stage('Sign firmware (dev key)') {
+      when { anyOf { branch 'main'; branch 'release/*' } }
+      steps { nmcSign keyAlias: 'alias/nmc-fw-signing-dev' }
+    }
+
+    stage('Simulator images') {
+      steps { script { nmcDockerBuild variants: VARIANTS, tag: env.IMAGE_TAG } }
+    }
+
+    stage('Container scan') {
+      steps {
+        container('security') {
+          script {
+            VARIANTS.each { v ->
+              def img = "${env.ECR_REGISTRY}/nmc-simulator-${v.toLowerCase()}:${env.IMAGE_TAG}"
+              sh "trivy image --config security/trivy.yaml --format sarif -o reports/trivy-${v}.sarif ${img}"
+              sh "trivy image --config security/trivy.yaml --exit-code 1 ${img}"
+              sh "syft ${img} -o cyclonedx-json=reports/sbom-image-${v}.cdx.json"
+            }
+          }
+        }
+      }
+    }
+
+    stage('Deploy ephemeral simulators') {
+      steps { nmcDeploySim namespace: env.SIM_NS, tag: env.IMAGE_TAG, variants: VARIANTS }
+    }
+
+    stage('Integration tests') {
+      steps { script { nmcIntegrationTest namespace: env.SIM_NS, variants: VARIANTS } }
+      post { always { junit allowEmptyResults: true, testResults: 'reports/integration-*.xml' } }
+    }
+
+    stage('DAST (OWASP ZAP baseline)') {
+      steps {
+        container('zap') {
+          sh '''
+            mkdir -p /zap/wrk && zap-baseline.py -t http://nmc-gvs.${SIM_NS}.svc.cluster.local:8080 \
+              -c security/zap/baseline-rules.tsv -r zap-gvs.html -x zap-gvs.xml -I || true
+            cp /zap/wrk/zap-gvs.* reports/
+          '''
+        }
+      }
+    }
+
+    stage('HIL smoke test (real cards)') {
+      when { expression { params.RUN_HIL } }
+      steps {
+        lock(resource: 'hil-rack-1', inversePrecedence: true) {
+          nmcHilTest variants: VARIANTS
+        }
+      }
+    }
+
+    stage('Publish artifacts') {
+      when { anyOf { branch 'main'; branch 'release/*' } }
+      steps { nmcPublishS3 bucket: env.S3_BUILDS }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'dist/**, reports/**', fingerprint: true
+      script { if (!params.KEEP_SIM_ENV) { container('deploy') { sh "kubectl delete ns ${env.SIM_NS} --ignore-not-found --wait=false" } } }
+    }
+    success  { notifyBuild status: 'SUCCESS' }
+    unstable { notifyBuild status: 'UNSTABLE' }
+    failure  { notifyBuild status: 'FAILURE' }
+  }
+}

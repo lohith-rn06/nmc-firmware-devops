@@ -1,0 +1,12 @@
+# Galaxy VL class - mid-range 3-phase UPS
+set(NMC_MODEL_ID 2)
+set(NMC_TARGET_ARCH "aarch64")          # aarch64-linux-gnu (Cortex-A53)
+set(NMC_NOMINAL_VOLTAGE 400)
+set(NMC_NOMINAL_FREQ 50)
+set(NMC_RATED_KVA 300)
+set(NMC_FEATURE_SNMP ON)
+set(NMC_FEATURE_MODBUS ON)
+set(NMC_FEATURE_HTTP ON)
+set(NMC_FEATURE_PCNS ON)
+set(NMC_FEATURE_PARALLEL OFF)
+set(NMC_FEATURE_FIPS OFF)

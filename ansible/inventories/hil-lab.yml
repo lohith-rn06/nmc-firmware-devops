@@ -1,0 +1,17 @@
+# Physical NMC cards in the hardware-in-the-loop rack (lab VLAN 120). The cards are managed
+# over HTTPS/SNMP - there is no SSH on a card, so all tasks run from the control node (local).
+all:
+  vars:
+    ansible_connection: local
+    nmc_https_port: 443
+    nmc_validate_certs: false        # lab cards use self-signed certs
+  children:
+    nmc_cards:
+      hosts:
+        hil-gvs-01:      { nmc_ip: 10.12.0.11, nmc_variant: GVS }
+        hil-gvl-01:      { nmc_ip: 10.12.0.12, nmc_variant: GVL }
+        hil-gvxl-01:     { nmc_ip: 10.12.0.13, nmc_variant: GVXL }
+        hil-gvxl-nam-01: { nmc_ip: 10.12.0.14, nmc_variant: GVXL-NAM }
+    hil_agents:
+      hosts:
+        hil-agent-01: { ansible_connection: ssh, ansible_host: 10.12.0.5, ansible_user: ops }

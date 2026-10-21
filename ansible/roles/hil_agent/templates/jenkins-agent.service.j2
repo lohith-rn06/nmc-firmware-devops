@@ -1,0 +1,14 @@
+[Unit]
+Description=Jenkins inbound agent ({{ agent_name }})
+After=network-online.target
+
+[Service]
+User=jenkins
+WorkingDirectory=/home/jenkins
+EnvironmentFile=/etc/default/jenkins-agent
+ExecStartPre=/usr/bin/curl -fsSo /home/jenkins/agent.jar {{ jenkins_url }}/jnlpJars/agent.jar
+ExecStart=/usr/bin/java -jar /home/jenkins/agent.jar -url {{ jenkins_url }} -name {{ agent_name }} -secret ${AGENT_SECRET} -workDir /home/jenkins
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

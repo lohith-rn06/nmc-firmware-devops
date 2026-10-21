@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-agent
+  nodeSelector: { nmc.io/pool: build-agents }
+  tolerations: [{ key: nmc.io/build-agents, operator: Exists, effect: NoSchedule }]
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+      command: [sleep, infinity]

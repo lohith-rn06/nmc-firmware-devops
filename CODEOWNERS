@@ -1,0 +1,7 @@
+# Reviews required by GitHub branch protection
+*                              @your-org/nmc-firmware-devs
+/firmware/src/security/        @your-org/nmc-firmware-devs @your-org/nmc-security
+/firmware/src/ota/             @your-org/nmc-firmware-devs @your-org/nmc-security
+/security/                     @your-org/nmc-security
+/jenkins/  /docker/  /k8s/  /helm/  /terraform/  @your-org/nmc-devops
+/terraform/modules/kms-signing/ @your-org/nmc-devops @your-org/nmc-security

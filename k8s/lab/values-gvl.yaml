@@ -1,0 +1,7 @@
+variant: GVL
+image:
+  repository: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/nmc-simulator-gvl
+  tag: latest
+simulation: true
+service:
+  type: ClusterIP

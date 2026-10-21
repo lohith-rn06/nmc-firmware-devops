@@ -1,0 +1,45 @@
+// Nightly: sanitizer builds, fuzzing, long soak test against the persistent lab simulators,
+// full container re-scan of the latest images (new CVEs appear even if code did not change).
+@Library('nmc-shared-lib@main') _
+
+pipeline {
+  agent { kubernetes { yaml libraryResource('pod-templates/nmc-build-pod.yaml'); defaultContainer 'toolchain' } }
+  triggers { cron('H 1 * * *') }
+  options { timestamps(); timeout(time: 4, unit: 'HOURS') }
+  stages {
+    stage('Checkout') { steps { checkout scm } }
+    stage('ASan/UBSan builds') {
+      steps { script { ['GVS', 'GVXL-NAM'].each { v -> nmcBuild variant: v, mode: 'sanitize' } } }
+    }
+    stage('Fuzzing (libFuzzer)') {
+      steps { sh 'firmware/tests/fuzz/build-fuzzers.sh 900' }      // 15 min per target
+      post  { always { archiveArtifacts allowEmptyArchive: true, artifacts: 'firmware/build/fuzz/crash-*' } }
+    }
+    stage('Soak test (lab simulators, 2h)') {
+      steps {
+        container('deploy') {
+          sh '''
+            for i in $(seq 1 240); do
+              kubectl -n nmc-lab exec deploy/nmc-test-client -- pytest -q -x /tests/test_snmp.py /tests/test_modbus.py || exit 1
+              sleep 30
+            done
+          '''
+        }
+      }
+    }
+    stage('Re-scan latest images') {
+      steps {
+        container('security') {
+          sh '''
+            for v in gvs gvl gvxl gvxl-nam; do
+              trivy image --exit-code 0 --format json -o reports/nightly-trivy-$v.json $ECR_REGISTRY/nmc-simulator-$v:latest
+            done
+          '''
+        }
+      }
+    }
+    stage('Cleanup stale PR environments') { steps { container('deploy') { sh 'scripts/cleanup-pr-envs.sh' } } }
+  }
+  post { always { archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/**' }
+         failure { notifyBuild status: 'NIGHTLY FAILURE' } }
+}

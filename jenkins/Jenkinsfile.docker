@@ -1,0 +1,49 @@
+// LOCAL-LAB version of the pipeline (phase 4 of the guide): plain Docker agents, no EKS/AWS.
+// Top-level `agent any` + `reuseNode true` keeps every stage in ONE workspace, so build
+// outputs, dist/ and reports/ from the parallel matrix cells end up in the same place.
+pipeline {
+  agent any
+  options { timestamps() }
+  stages {
+    stage('Toolchain image') {
+      steps { sh 'docker build -t nmc-toolchain:local docker/toolchain' }
+    }
+    stage('Static analysis') {
+      agent { docker { image 'nmc-toolchain:local'; reuseNode true } }
+      steps {
+        sh 'mkdir -p reports && cppcheck --enable=warning,style,performance,portability --inline-suppr --suppressions-list=security/cppcheck-suppressions.txt --xml -I firmware/include firmware/src 2> reports/cppcheck.xml'
+        sh 'semgrep --config security/semgrep --error --sarif -o reports/semgrep.sarif firmware/src'
+      }
+    }
+    stage('Build matrix') {
+      matrix {
+        agent { docker { image 'nmc-toolchain:local'; reuseNode true } }
+        axes { axis { name 'VARIANT'; values 'GVS', 'GVL', 'GVXL', 'GVXL-NAM' } }
+        stages {
+          stage('host + tests') { steps { sh 'scripts/build.sh $VARIANT --coverage' } }
+          stage('cross')        { steps { sh 'scripts/build.sh $VARIANT --cross' } }
+          stage('package')      { steps { sh 'scripts/package.sh $VARIANT' } }
+        }
+      }
+    }
+    stage('Simulator images') {
+      steps {
+        sh '''
+          for v in GVS GVL GVXL GVXL-NAM; do
+            docker build -f docker/simulator/Dockerfile --build-arg VARIANT=$v \
+              -t nmc-simulator-$(echo $v | tr A-Z a-z):local .
+          done
+        '''
+      }
+    }
+    stage('Integration tests') {
+      steps { sh 'scripts/run-local-lab.sh' }
+    }
+  }
+  post {
+    always {
+      junit allowEmptyResults: true, testResults: 'reports/*.xml'
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'dist/**, reports/**'
+    }
+  }
+}

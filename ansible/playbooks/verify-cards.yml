@@ -1,0 +1,25 @@
+- name: Verify version and protocols on HIL cards
+  hosts: nmc_cards
+  gather_facts: false
+  tasks:
+    - name: Read version over REST
+      ansible.builtin.uri:
+        url: "https://{{ nmc_ip }}:{{ nmc_https_port }}/api/version"
+        validate_certs: "{{ nmc_validate_certs }}"
+        return_content: true
+      register: ver
+
+    - name: Correct variant is running
+      ansible.builtin.assert:
+        that: ver.json.model == nmc_variant
+
+    - name: Run the integration suite against the physical card
+      ansible.builtin.command:
+        cmd: pytest -q ../firmware/tests/integration --junitxml=../reports/hil-{{ nmc_variant }}.xml
+      environment:
+        NMC_HOST: "{{ nmc_ip }}"
+        NMC_HTTP_PORT: "{{ nmc_https_port }}"
+        NMC_SNMP_PORT: "161"
+        NMC_MODBUS_PORT: "502"
+        NMC_VARIANT: "{{ nmc_variant }}"
+      changed_when: false

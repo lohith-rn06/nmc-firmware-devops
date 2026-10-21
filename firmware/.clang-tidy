@@ -1,0 +1,16 @@
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  misc-*,
+  portability-*,
+  readability-misleading-indentation,
+  -bugprone-easily-swappable-parameters,
+  -cert-err33-c,
+  -misc-include-cleaner,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+# ^ that check demands C11 Annex K (memcpy_s...), which glibc does not provide; bounds are
+#   enforced by explicit size arguments + semgrep banned-API rules instead.
+WarningsAsErrors: 'bugprone-*,cert-*,clang-analyzer-security*'
+HeaderFilterRegex: 'firmware/include/.*'

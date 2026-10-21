@@ -1,0 +1,78 @@
+// =====================================================================================
+// NMC firmware RELEASE pipeline. Triggered by a signed tag v<MAJOR>.<MINOR>.<PATCH>.
+// Rebuilds from the tag (never re-uses CI binaries), signs with the PRODUCTION KMS key,
+// requires Product Owner + Security approval, publishes to the WORM release bucket.
+// =====================================================================================
+@Library('nmc-shared-lib@main') _
+
+pipeline {
+  agent { kubernetes { yaml libraryResource('pod-templates/nmc-build-pod.yaml'); defaultContainer 'toolchain' } }
+  options { timestamps(); timeout(time: 3, unit: 'HOURS'); disableConcurrentBuilds() }
+  environment {
+    AWS_REGION  = 'ap-south-1'
+    S3_RELEASES = 'nmc-firmware-releases'
+  }
+  stages {
+    stage('Verify tag') {
+      steps {
+        checkout scm
+        sh '''
+          git verify-tag "$TAG_NAME"                       # tag must be GPG-signed by a release manager
+          [ "${TAG_NAME#v}" = "$(cat VERSION)" ] || { echo "tag/VERSION mismatch"; exit 1; }
+        '''
+        script { env.NMC_VERSION = env.TAG_NAME.replaceFirst('^v', '') }
+      }
+    }
+    stage('Clean rebuild all variants') {
+      steps {
+        script {
+          ['GVS', 'GVL', 'GVXL', 'GVXL-NAM'].each { v ->
+            nmcBuild variant: v, mode: 'host'
+            nmcBuild variant: v, mode: 'cross'
+            nmcPackage variant: v
+          }
+        }
+      }
+    }
+    stage('Reproducibility check') {
+      steps {
+        sh '''
+          cp -r dist dist-first && rm -rf build dist
+          for v in GVS GVL GVXL GVXL-NAM; do scripts/build.sh $v --cross >/dev/null && scripts/package.sh $v >/dev/null; done
+          for f in dist/*.nmcfw; do cmp "$f" "dist-first/$(basename "$f")" || { echo "NOT reproducible: $f"; exit 1; }; done
+        '''
+      }
+    }
+    stage('Full security gate') {
+      steps {
+        container('security') {
+          sh '''
+            syft dir:firmware -o cyclonedx-json=dist/sbom.cdx.json
+            grype sbom:dist/sbom.cdx.json --fail-on medium
+          '''
+        }
+      }
+    }
+    stage('Approvals') {
+      steps {
+        timeout(time: 3, unit: 'DAYS') {
+          input message: "Release NMC firmware ${env.NMC_VERSION}?", submitter: 'nmc-product-owners,nmc-security-officers',
+                parameters: [text(name: 'RELEASE_NOTES_OK', defaultValue: 'yes', description: 'Release notes reviewed?')]
+        }
+      }
+    }
+    stage('Sign with PRODUCTION key') {
+      steps { nmcSign keyAlias: 'alias/nmc-fw-signing-prod', roleArn: 'arn:aws:iam::ACCOUNT_ID:role/nmc-release-signer' }
+    }
+    stage('Publish release') {
+      steps {
+        sh 'scripts/release-notes.sh > dist/RELEASE_NOTES.md'
+        nmcPublishS3 bucket: env.S3_RELEASES, prefix: "releases/${env.NMC_VERSION}"
+        sh 'gh release create "$TAG_NAME" dist/*.nmcfw dist/*.sig dist/*.sha256 dist/sbom.cdx.json -F dist/RELEASE_NOTES.md'
+      }
+    }
+  }
+  post { always { archiveArtifacts artifacts: 'dist/**', fingerprint: true }
+         success { notifyBuild status: 'RELEASED' }
+         failure { notifyBuild status: 'FAILURE' } }
+}

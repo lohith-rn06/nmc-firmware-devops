@@ -1,0 +1,10 @@
+.git
+build/
+dist/
+**/__pycache__
+**/reports
+terraform/
+k8s/
+helm/
+docs/
+*.pem

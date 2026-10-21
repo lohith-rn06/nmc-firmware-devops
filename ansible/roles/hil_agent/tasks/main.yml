@@ -1,0 +1,24 @@
+- name: Packages
+  ansible.builtin.apt:
+    name: [openjdk-17-jre-headless, python3-pytest, openssl, snmp, git, ansible]
+    state: present
+    update_cache: true
+
+- name: Jenkins agent user
+  ansible.builtin.user:
+    name: jenkins
+    system: true
+    create_home: true
+
+- name: Agent systemd unit
+  ansible.builtin.template:
+    src: jenkins-agent.service.j2
+    dest: /etc/systemd/system/jenkins-agent.service
+    mode: "0644"
+  notify: restart agent
+
+- name: Agent enabled
+  ansible.builtin.systemd:
+    name: jenkins-agent
+    enabled: true
+    state: started

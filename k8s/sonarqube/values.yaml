@@ -1,0 +1,7 @@
+# helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+# helm upgrade --install sonarqube sonarqube/sonarqube -n sonarqube -f k8s/sonarqube/values.yaml
+edition: community
+persistence: { enabled: true, storageClass: gp3, size: 20Gi }
+postgresql: { enabled: true, persistence: { storageClass: gp3 } }
+resources: { requests: { cpu: 500m, memory: 2Gi }, limits: { memory: 4Gi } }
+monitoringPasscode: "change-me-via-secret"

@@ -1,0 +1,14 @@
+build/
+dist/
+reports/
+**/__pycache__/
+.terraform/
+*.tfstate*
+*.tfplan
+terraform.tfvars
+keys/*private*.pem
+*.digest
+.notify.json
+firmware/build/
+.env
+k8s/jenkins/values-rendered.yaml

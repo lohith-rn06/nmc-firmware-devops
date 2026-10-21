@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nmc.name" . }}
+  labels: {{- include "nmc.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector: { app.kubernetes.io/instance: {{ include "nmc.name" . }} }
+  ports:
+    - { name: http, port: {{ .Values.ports.http }}, targetPort: http, protocol: TCP }
+    - { name: snmp, port: {{ .Values.ports.snmp }}, targetPort: snmp, protocol: UDP }
+    - { name: modbus, port: {{ .Values.ports.modbus }}, targetPort: modbus, protocol: TCP }

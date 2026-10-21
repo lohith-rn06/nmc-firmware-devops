@@ -1,0 +1,38 @@
+# Banned / dangerous C APIs for firmware (based on Microsoft SDL banned list + CERT C).
+rules:
+  - id: nmc-banned-string-functions
+    languages: [c]
+    severity: ERROR
+    message: "$F is banned (no bounds checking). Use snprintf/strncpy with explicit size."
+    pattern-either:
+      - pattern: strcpy(...)
+      - pattern: strcat(...)
+      - pattern: sprintf(...)
+      - pattern: vsprintf(...)
+      - pattern: gets(...)
+    metadata: { cwe: "CWE-120: Buffer Copy without Checking Size of Input", iec62443: "SI-1" }
+  - id: nmc-no-shell-exec
+    languages: [c]
+    severity: ERROR
+    message: "Never spawn a shell from network-facing firmware (command injection)."
+    pattern-either:
+      - pattern: system(...)
+      - pattern: popen(...)
+    metadata: { cwe: "CWE-78" }
+  - id: nmc-weak-random
+    languages: [c]
+    severity: ERROR
+    message: "rand()/srand() are not cryptographically secure. Read /dev/urandom or use getrandom()."
+    pattern-either:
+      - pattern: rand()
+      - pattern: srand(...)
+    metadata: { cwe: "CWE-338" }
+  - id: nmc-memcmp-on-secrets
+    languages: [c]
+    severity: WARNING
+    message: "memcmp/strcmp on password hashes leaks timing - use a constant-time compare."
+    patterns:
+      - pattern-either:
+          - pattern: memcmp($A, $HASH, ...)
+          - pattern: strcmp($A, $HASH)
+      - metavariable-regex: { metavariable: $HASH, regex: '.*(hash|pass|secret).*' }

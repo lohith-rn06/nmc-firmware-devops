@@ -1,0 +1,33 @@
+# Agent pod for NMC builds. Scheduled on the spot 'build-agents' node group (tainted).
+apiVersion: v1
+kind: Pod
+metadata:
+  labels: { app: nmc-jenkins-agent }
+spec:
+  serviceAccountName: jenkins-agent          # IRSA: ECR push, S3 builds, KMS sign (dev key)
+  nodeSelector: { nmc.io/pool: build-agents }
+  tolerations: [{ key: nmc.io/build-agents, operator: Exists, effect: NoSchedule }]
+  securityContext: { fsGroup: 1000 }
+  containers:
+    - name: toolchain
+      image: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/nmc-toolchain:latest   # pin @sha256:... in real use
+      command: [sleep, infinity]
+      resources: { requests: { cpu: "2", memory: 4Gi }, limits: { memory: 8Gi } }
+      securityContext: { runAsUser: 1000, runAsNonRoot: true, allowPrivilegeEscalation: false }
+    - name: security
+      image: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/nmc-security-tools:latest   # trivy, grype, syft, gitleaks, cosign
+      command: [sleep, infinity]
+      resources: { requests: { cpu: 500m, memory: 1Gi } }
+    - name: sonar
+      image: sonarsource/sonar-scanner-cli:11
+      command: [sleep, infinity]
+    - name: zap
+      image: ghcr.io/zaproxy/zaproxy:stable
+      command: [sleep, infinity]
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+      command: [sleep, infinity]
+      resources: { requests: { cpu: "1", memory: 2Gi } }
+    - name: deploy
+      image: alpine/k8s:1.31.1               # kubectl + helm + aws cli
+      command: [sleep, infinity]

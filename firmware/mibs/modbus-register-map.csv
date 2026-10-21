@@ -1,0 +1,21 @@
+register,name,unit,scale,description
+0,status,enum,1,2=online 3=on battery 4=bypass
+1,input_voltage_l1,V,0.1,Input phase-neutral voltage L1
+2,input_voltage_l2,V,0.1,Input phase-neutral voltage L2
+3,input_voltage_l3,V,0.1,Input phase-neutral voltage L3
+4,output_voltage_l1,V,0.1,Output phase-neutral voltage L1
+5,output_voltage_l2,V,0.1,Output phase-neutral voltage L2
+6,output_voltage_l3,V,0.1,Output phase-neutral voltage L3
+7,output_current_l1,A,0.1,Output current L1
+8,output_current_l2,A,0.1,Output current L2
+9,output_current_l3,A,0.1,Output current L3
+10,input_frequency,Hz,0.01,Input frequency
+11,output_frequency,Hz,0.01,Output frequency
+12,load,%,1,Output load percent
+13,battery_charge,%,1,Battery state of charge
+14,runtime,min,1,Estimated runtime remaining
+15,battery_temperature,C,0.1,Battery temperature
+16,uptime_hi,s,1,Uptime high word
+17,uptime_lo,s,1,Uptime low word
+18,rated_kva,kVA,1,UPS rating
+19,model_id,enum,1,1=GVS 2=GVL 3=GVXL 4=GVXL-NAM

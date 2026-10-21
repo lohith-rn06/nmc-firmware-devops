@@ -1,0 +1,23 @@
+# Pinned controller plugins (installed by the Helm chart / local Dockerfile)
+kubernetes:4295.v7fa_01b_309c95
+workflow-aggregator:600.vb_57cdd26fdd7
+configuration-as-code:1850.va_a_8c31d3158b_
+job-dsl:1.90
+git:5.6.0
+github-branch-source:1797.v86fdb_4d57d43
+pipeline-utility-steps:2.18.0
+pipeline-aws:1.45
+aws-credentials:231.v08a_59f17d742
+role-strategy:743.v142ea_b_d5f1d3
+saml:4.495.vd28d6b_e8c9a_f
+matrix-auth:3.2.3
+warnings-ng:11.12.0
+coverage:1.16.1
+junit:1300.v03d9d8a_cf1fb_
+sonar:2.17.2
+lockable-resources:1327.ved786b_a_197e0
+timestamper:1.27
+ansicolor:1.0.4
+email-ext:1846.v3016460b_7f2d
+build-discarder:174.v6e9b_a_1a_9a_73b_
+docker-workflow:580.vc0c340686b_54

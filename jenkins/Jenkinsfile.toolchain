@@ -1,0 +1,19 @@
+// Rebuilds the build-toolchain image when docker/toolchain changes. Pipelines pin the digest.
+pipeline {
+  agent { kubernetes { yaml libraryResource('pod-templates/kaniko-pod.yaml'); defaultContainer 'kaniko' } }
+  triggers { pollSCM('H/15 * * * *') }
+  stages {
+    stage('Build & push toolchain') {
+      when { changeset 'docker/toolchain/**' }
+      steps {
+        checkout scm
+        sh '''
+          /kaniko/executor --context docker/toolchain --dockerfile docker/toolchain/Dockerfile \
+            --destination $ECR_REGISTRY/nmc-toolchain:$(date +%Y%m%d)-${GIT_COMMIT:0:7} \
+            --destination $ECR_REGISTRY/nmc-toolchain:latest --digest-file digest.txt --cache=true
+        '''
+        sh 'echo "New toolchain digest: $(cat digest.txt) - update pod-templates/nmc-build-pod.yaml"'
+      }
+    }
+  }
+}

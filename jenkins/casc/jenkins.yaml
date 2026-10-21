@@ -1,0 +1,77 @@
+# Jenkins Configuration-as-Code for the EKS controller (mounted by the Helm chart).
+# ${VAR} placeholders are resolved from Kubernetes secrets synced from AWS Secrets Manager.
+jenkins:
+  systemMessage: "NMC Firmware CI/CD - changes to this instance are made in git (jenkins/casc), not in the UI"
+  numExecutors: 0                      # never build on the controller
+  mode: EXCLUSIVE
+  securityRealm:
+    saml:                              # corporate SSO (Azure AD / Okta)
+      idpMetadataConfiguration: { url: "${SSO_METADATA_URL}" }
+      displayNameAttributeName: "http://schemas.microsoft.com/identity/claims/displayname"
+      groupsAttributeName: "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups"
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: admin
+            permissions: [Overall/Administer]
+            entries: [{ group: nmc-devops }]
+          - name: developer
+            permissions: [Overall/Read, Job/Read, Job/Build, Job/Cancel, Run/Replay]
+            entries: [{ group: nmc-firmware-devs }]
+          - name: release-approver
+            permissions: [Overall/Read, Job/Read]
+            entries: [{ group: nmc-product-owners }, { group: nmc-security-officers }]
+  clouds:
+    - kubernetes:
+        name: eks
+        namespace: jenkins-agents
+        jenkinsUrl: http://jenkins.jenkins.svc.cluster.local:8080
+        jenkinsTunnel: jenkins-agent.jenkins.svc.cluster.local:50000
+        containerCapStr: "40"
+        podRetention: never
+        waitForPodSec: 600
+  globalNodeProperties:
+    - envVars:
+        env:
+          - { key: AWS_REGION, value: ap-south-1 }
+  remotingSecurity: { enabled: true }
+security:
+  scriptApproval:
+    approvedSignatures: []
+  gitHostKeyVerificationConfiguration:
+    sshHostKeyVerificationStrategy: knownHostsFileVerificationStrategy
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string: { scope: GLOBAL, id: ecr-registry-url, secret: "${ECR_REGISTRY}" }
+          - string: { scope: GLOBAL, id: teams-webhook-url, secret: "${TEAMS_WEBHOOK_URL}" }
+          - string: { scope: GLOBAL, id: sonar-token, secret: "${SONAR_TOKEN}" }
+          - gitHubApp: { id: github-app, appID: "${GITHUB_APP_ID}", privateKey: "${GITHUB_APP_KEY}" }
+          - usernamePassword: { scope: GLOBAL, id: hil-card-admin, username: admin, password: "${HIL_CARD_PASSWORD}" }
+unclassified:
+  location: { url: "https://jenkins.nmc.example.com/" }
+  sonarGlobalConfiguration:
+    installations:
+      - name: sonarqube
+        serverUrl: http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000
+        credentialsId: sonar-token
+  globalLibraries:
+    libraries:
+      - name: nmc-shared-lib
+        defaultVersion: main
+        allowVersionOverride: true
+        retriever:
+          modernSCM:
+            libraryPath: jenkins/shared-library/
+            scm:
+              github: { repoOwner: your-org, repository: nmc-firmware-devops, credentialsId: github-app }
+  lockableResourcesManager:
+    declaredResources:
+      - { name: hil-rack-1, labels: hil, description: "Lab rack with one GVS, GVL, GVXL, GVXL-NAM card" }
+  buildDiscarders:
+    configuredBuildDiscarders:
+      - jobBuildDiscarder
+jobs:
+  - file: /var/jenkins_home/casc_configs/seed-jobs.groovy

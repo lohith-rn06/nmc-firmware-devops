@@ -1,0 +1,49 @@
+# Local lab: all four NMC cards + integration test runner. No AWS, no Kubernetes needed.
+#   docker compose -f docker/docker-compose.yml up -d --build
+#   docker compose -f docker/docker-compose.yml run --rm --use-aliases -e NMC_HOST=nmc-gvs -e NMC_VARIANT=GVS itest
+x-nmc: &nmc
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment: &nmc-env
+    NMC_SIMULATION: "1"
+    NMC_ADMIN_USER: admin
+    NMC_ADMIN_PASS: ${NMC_ADMIN_PASS:-Test#Pass1}
+    NMC_SNMP_COMMUNITY: ${NMC_SNMP_COMMUNITY:-lab-ro}
+    NMC_PCNS_CLIENTS: itest:3052
+
+services:
+  toolchain:
+    image: nmc-toolchain:local
+    build: { context: toolchain }
+    profiles: [build]
+
+  nmc-gvs:
+    <<: *nmc
+    image: nmc-simulator-gvs:local
+    build: { context: .., dockerfile: docker/simulator/Dockerfile, args: { VARIANT: GVS } }
+    ports: ["8081:8080", "1161:1161/udp", "1502:1502"]
+  nmc-gvl:
+    <<: *nmc
+    image: nmc-simulator-gvl:local
+    build: { context: .., dockerfile: docker/simulator/Dockerfile, args: { VARIANT: GVL } }
+    ports: ["8082:8080", "2161:1161/udp", "2502:1502"]
+  nmc-gvxl:
+    <<: *nmc
+    image: nmc-simulator-gvxl:local
+    build: { context: .., dockerfile: docker/simulator/Dockerfile, args: { VARIANT: GVXL } }
+    ports: ["8083:8080", "3161:1161/udp", "3502:1502"]
+  nmc-gvxl-nam:
+    <<: *nmc
+    image: nmc-simulator-gvxl-nam:local
+    build: { context: .., dockerfile: docker/simulator/Dockerfile, args: { VARIANT: GVXL-NAM } }
+    ports: ["8084:8080", "4161:1161/udp", "4502:1502"]
+
+  itest:
+    image: nmc-test-runner:local
+    build: { context: .., dockerfile: docker/test-runner/Dockerfile }
+    profiles: [test]
+    environment:
+      NMC_ADMIN_PASS: ${NMC_ADMIN_PASS:-Test#Pass1}
+      NMC_SNMP_COMMUNITY: ${NMC_SNMP_COMMUNITY:-lab-ro}

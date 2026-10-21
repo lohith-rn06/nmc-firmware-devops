@@ -1,0 +1,24 @@
+# Admission policies for the simulator namespaces (CI and lab).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: { name: nmc-images-from-ecr }
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: ecr-only
+      match: { any: [{ resources: { kinds: [Pod], namespaceSelector: { matchLabels: { nmc.io/ephemeral: "true" } } } }] }
+      validate:
+        message: "NMC simulator images must come from our ECR"
+        pattern: { spec: { containers: [{ image: "*.dkr.ecr.ap-south-1.amazonaws.com/*" }] } }
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: { name: nmc-no-privileged }
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: no-privileged
+      match: { any: [{ resources: { kinds: [Pod], namespaces: [jenkins-agents, nmc-lab] } }] }
+      validate:
+        message: "Privileged containers are not allowed (use Kaniko, not docker-in-docker)"
+        pattern: { spec: { containers: [{ "=(securityContext)": { "=(privileged)": false } }] } }

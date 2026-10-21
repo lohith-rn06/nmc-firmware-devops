@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nmc.name" . }}
+  labels: {{- include "nmc.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/instance: {{ include "nmc.name" . }} }
+  template:
+    metadata:
+      labels: {{- include "nmc.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: nmc
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: NMC_HTTP_PORT, value: "{{ .Values.ports.http }}" }
+            - { name: NMC_SNMP_PORT, value: "{{ .Values.ports.snmp }}" }
+            - { name: NMC_MODBUS_PORT, value: "{{ .Values.ports.modbus }}" }
+            - { name: NMC_SIMULATION, value: "{{ ternary 1 0 .Values.simulation }}" }
+            - { name: NMC_MODBUS_WRITE, value: "{{ ternary 1 0 .Values.modbusWriteEnabled }}" }
+            - { name: NMC_PCNS_CLIENTS, value: "{{ .Values.pcnsClients }}" }
+            - name: NMC_ADMIN_PASS
+              valueFrom: { secretKeyRef: { name: {{ .Values.credentialsSecret }}, key: admin-password } }
+            - name: NMC_SNMP_COMMUNITY
+              valueFrom: { secretKeyRef: { name: {{ .Values.credentialsSecret }}, key: snmp-community } }
+          ports:
+            - { name: http, containerPort: {{ .Values.ports.http }}, protocol: TCP }
+            - { name: snmp, containerPort: {{ .Values.ports.snmp }}, protocol: UDP }
+            - { name: modbus, containerPort: {{ .Values.ports.modbus }}, protocol: TCP }
+          readinessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 5 }
+          livenessProbe:  { tcpSocket: { port: modbus }, periodSeconds: 10 }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }

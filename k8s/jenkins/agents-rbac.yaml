@@ -1,0 +1,41 @@
+# Agent service account in jenkins-agents (IRSA role: ECR push, S3 builds, KMS sign with DEV key).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-agent
+  namespace: jenkins-agents
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/nmc-jenkins-agent
+---
+# Controller may create agent pods in jenkins-agents
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: jenkins-pod-manager, namespace: jenkins-agents }
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/exec, pods/log, persistentvolumeclaims, events]
+    verbs: [get, list, watch, create, delete, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: jenkins-pod-manager, namespace: jenkins-agents }
+subjects: [{ kind: ServiceAccount, name: jenkins, namespace: jenkins }]
+roleRef: { kind: Role, name: jenkins-pod-manager, apiGroup: rbac.authorization.k8s.io }
+---
+# Agents may create/delete ephemeral nmc-ci-* namespaces and deploy simulators into them
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: nmc-sim-deployer }
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, create, delete, patch]
+  - apiGroups: ["", apps, batch, networking.k8s.io]
+    resources: [deployments, services, secrets, configmaps, pods, pods/log, jobs, networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: jenkins-agent-sim-deployer }
+subjects: [{ kind: ServiceAccount, name: jenkins-agent, namespace: jenkins-agents }]
+roleRef: { kind: ClusterRole, name: nmc-sim-deployer, apiGroup: rbac.authorization.k8s.io }

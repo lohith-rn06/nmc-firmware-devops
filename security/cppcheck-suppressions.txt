@@ -1,0 +1,4 @@
+# Each suppression needs a justification and an owner.
+missingIncludeSystem
+# fuzz harnesses intentionally use a static init flag
+variableScope:firmware/tests/fuzz/*

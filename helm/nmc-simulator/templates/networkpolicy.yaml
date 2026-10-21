@@ -1,0 +1,13 @@
+# Only test runners and the monitoring namespace may talk to a simulated card.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "nmc.name" . }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/instance: {{ include "nmc.name" . }} }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: nmc-itest } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }

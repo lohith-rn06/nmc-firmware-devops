@@ -1,0 +1,46 @@
+# Helm values for jenkins/jenkins chart on EKS:
+#   helm repo add jenkins https://charts.jenkins.io
+#   helm upgrade --install jenkins jenkins/jenkins -n jenkins -f k8s/jenkins/values.yaml
+controller:
+  image: { tag: 2.479.1-lts-jdk17 }
+  numExecutors: 0
+  resources:
+    requests: { cpu: "1", memory: 3Gi }
+    limits: { memory: 4Gi }
+  javaOpts: "-XX:+UseG1GC -XX:MaxRAMPercentage=70 -Dhudson.model.DirectoryBrowserSupport.CSP="
+  installPlugins: false            # plugins come from the pinned list below
+  additionalPlugins: []
+  installLatestPlugins: false
+  initContainerEnv: []
+  serviceType: ClusterIP
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    hostName: jenkins.nmc.example.com
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal          # corporate network / VPN only
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-1:ACCOUNT_ID:certificate/REPLACE
+  containerEnvFrom:
+    - secretRef: { name: jenkins-casc-secrets }          # synced from AWS Secrets Manager (ExternalSecret)
+  JCasC:
+    defaultConfig: false
+    configScripts:
+      nmc: |
+        # contents of jenkins/casc/jenkins.yaml are injected by scripts/render-jenkins-values.sh
+  sidecars:
+    configAutoReload: { enabled: true }
+persistence:
+  enabled: true
+  storageClass: gp3
+  size: 50Gi
+serviceAccount:
+  create: true
+  name: jenkins
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/nmc-jenkins-controller
+agent:
+  enabled: true
+  namespace: jenkins-agents
+  podRetention: Never

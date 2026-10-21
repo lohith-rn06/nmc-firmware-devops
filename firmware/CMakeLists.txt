@@ -1,0 +1,110 @@
+cmake_minimum_required(VERSION 3.20)
+project(nmc_firmware C)
+
+# ---------------------------------------------------------------- variant selection
+set(NMC_VARIANT "GVS" CACHE STRING "Card variant: GVS | GVL | GVXL | GVXL-NAM")
+set_property(CACHE NMC_VARIANT PROPERTY STRINGS GVS GVL GVXL GVXL-NAM)
+set(_vfile ${CMAKE_CURRENT_SOURCE_DIR}/variants/${NMC_VARIANT}.cmake)
+if(NOT EXISTS ${_vfile})
+  message(FATAL_ERROR "Unknown NMC_VARIANT '${NMC_VARIANT}'")
+endif()
+include(${_vfile})
+
+# ---------------------------------------------------------------- version / provenance
+if(NOT NMC_VERSION)
+  file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/../VERSION NMC_VERSION LIMIT_COUNT 1)
+endif()
+if(NOT NMC_GIT_SHA)
+  execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                  OUTPUT_VARIABLE NMC_GIT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(NOT NMC_GIT_SHA)
+    set(NMC_GIT_SHA "nogit")
+  endif()
+endif()
+message(STATUS "NMC ${NMC_VARIANT} v${NMC_VERSION} (${NMC_GIT_SHA}) target=${NMC_TARGET_ARCH}")
+
+# ---------------------------------------------------------------- compiler hardening
+option(NMC_WERROR   "Treat warnings as errors" ON)
+option(NMC_COVERAGE "Build with gcov coverage" OFF)
+option(NMC_SANITIZE "Build with ASan/UBSan (host only)" OFF)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+add_compile_options(-Wall -Wextra -Wformat=2 -Wshadow -Wconversion -Wno-sign-conversion
+                    -fstack-protector-strong -fno-common)
+if(NMC_WERROR)
+  add_compile_options(-Werror)
+endif()
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_compile_definitions(_FORTIFY_SOURCE=2)
+endif()
+add_link_options(-pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
+if(NMC_COVERAGE)
+  add_compile_options(--coverage -O0)
+  add_link_options(--coverage)
+endif()
+if(NMC_SANITIZE)
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
+add_compile_definitions(
+  _GNU_SOURCE
+  NMC_MODEL="${NMC_VARIANT}" NMC_MODEL_ID=${NMC_MODEL_ID}
+  NMC_VERSION="${NMC_VERSION}" NMC_GIT_SHA="${NMC_GIT_SHA}"
+  NMC_NOMINAL_VOLTAGE=${NMC_NOMINAL_VOLTAGE} NMC_NOMINAL_FREQ=${NMC_NOMINAL_FREQ}
+  NMC_RATED_KVA=${NMC_RATED_KVA})
+
+# ---------------------------------------------------------------- sources by feature
+set(CORE_SRC src/core/config.c src/core/log.c src/core/ups_model.c src/net/tcpip.c
+             src/security/sha256.c src/security/auth.c src/security/audit_log.c src/ota/fw_update.c)
+foreach(feat SNMP MODBUS HTTP PCNS PARALLEL FIPS)
+  if(NMC_FEATURE_${feat})
+    add_compile_definitions(NMC_FEATURE_${feat}=1)
+  endif()
+endforeach()
+if(NMC_FEATURE_SNMP)
+  list(APPEND CORE_SRC src/snmp/ber.c src/snmp/mib_ups.c src/snmp/snmp_agent.c)
+endif()
+if(NMC_FEATURE_MODBUS)
+  list(APPEND CORE_SRC src/modbus/register_map.c src/modbus/modbus_tcp.c)
+endif()
+if(NMC_FEATURE_HTTP)
+  list(APPEND CORE_SRC src/http/web_server.c)
+endif()
+if(NMC_FEATURE_PCNS)
+  list(APPEND CORE_SRC src/pcns/pcns_notifier.c)
+endif()
+
+find_package(Threads REQUIRED)
+add_library(nmc_core STATIC ${CORE_SRC})
+target_include_directories(nmc_core PUBLIC include)
+target_link_libraries(nmc_core PUBLIC Threads::Threads m)
+
+add_executable(nmc-fw src/core/main.c)
+target_link_libraries(nmc-fw PRIVATE nmc_core)
+install(TARGETS nmc-fw RUNTIME DESTINATION bin)
+install(DIRECTORY web/ DESTINATION share/nmc/web)
+install(DIRECTORY mibs/ DESTINATION share/nmc/mibs)
+
+# ---------------------------------------------------------------- tests
+option(NMC_BUILD_TESTS "Build unit tests" ON)
+if(NMC_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
+  enable_testing()
+  set(TESTS test_ups test_auth test_fw_update)
+  if(NMC_FEATURE_SNMP)
+    list(APPEND TESTS test_ber test_snmp)
+  endif()
+  if(NMC_FEATURE_MODBUS)
+    list(APPEND TESTS test_modbus)
+  endif()
+  if(NMC_FEATURE_PCNS)
+    list(APPEND TESTS test_pcns)
+  endif()
+  foreach(t ${TESTS})
+    add_executable(${t} tests/unit/${t}.c)
+    target_link_libraries(${t} PRIVATE nmc_core)
+    target_include_directories(${t} PRIVATE tests/unit)
+    add_test(NAME ${t} COMMAND ${t})
+  endforeach()
+endif()

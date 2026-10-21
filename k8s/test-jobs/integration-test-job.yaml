@@ -1,0 +1,32 @@
+# Template applied by nmcIntegrationTest (placeholders replaced with sed).
+apiVersion: v1
+kind: Service
+metadata: { name: nmc-itest-__LVARIANT__ }        # PCNS notifications are sent back to this pod
+spec:
+  selector: { job-name: nmc-itest-__LVARIANT__ }
+  ports: [{ name: pcns, port: 3052, targetPort: 3052 }]
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: nmc-itest-__LVARIANT__ }
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata: { labels: { app: nmc-itest } }
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, runAsUser: 1000 }
+      containers:
+        - name: pytest
+          image: __IMAGE__
+          command: [sh, -c, "pytest --junitxml=/tmp/junit.xml; rc=$?; cat /tmp/junit.xml; exit $rc"]
+          env:
+            - { name: NMC_HOST, value: nmc-__LVARIANT__ }
+            - { name: NMC_VARIANT, value: __VARIANT__ }
+            - name: NMC_ADMIN_PASS
+              valueFrom: { secretKeyRef: { name: nmc-sim-credentials, key: admin-password } }
+            - name: NMC_SNMP_COMMUNITY
+              valueFrom: { secretKeyRef: { name: nmc-sim-credentials, key: snmp-community } }
+          ports: [{ containerPort: 3052 }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }

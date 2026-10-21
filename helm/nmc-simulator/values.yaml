@@ -1,0 +1,15 @@
+variant: GVS                     # GVS | GVL | GVXL | GVXL-NAM
+image:
+  repository: nmc-simulator-gvs
+  tag: latest
+  pullPolicy: IfNotPresent
+simulation: false                # enable /api/simulate/* (CI only)
+pcnsClients: ""
+modbusWriteEnabled: false
+credentialsSecret: nmc-sim-credentials   # keys: admin-password, snmp-community
+ports: { http: 8080, snmp: 1161, modbus: 1502 }
+resources:
+  requests: { cpu: 50m, memory: 32Mi }
+  limits: { memory: 128Mi }
+service:
+  type: ClusterIP

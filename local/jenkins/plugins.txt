@@ -1,0 +1,14 @@
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+github-branch-source
+docker-workflow
+pipeline-utility-steps
+junit
+warnings-ng
+coverage
+timestamper
+ansicolor
+sonar

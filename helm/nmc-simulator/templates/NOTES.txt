@@ -1,0 +1,3 @@
+NMC {{ .Values.variant }} simulator deployed as {{ include "nmc.name" . }}.
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "nmc.name" . }} 8080:{{ .Values.ports.http }}
+  curl localhost:8080/api/status

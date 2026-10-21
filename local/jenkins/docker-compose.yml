@@ -1,0 +1,21 @@
+# Local Jenkins + Docker-in-Docker + SonarQube.  http://localhost:8090 (admin / see .env)
+services:
+  jenkins:
+    build: .
+    ports: ["8090:8080"]
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-ChangeMe#123}
+      NMC_REPO_URL: ${NMC_REPO_URL:-https://github.com/your-user/nmc-firmware-devops.git}
+    volumes: [jenkins_home:/var/jenkins_home]
+    depends_on: [dind]
+  dind:
+    image: docker:27-dind
+    privileged: true            # lab only - in EKS we use Kaniko instead (no privileged pods)
+    environment: { DOCKER_TLS_CERTDIR: "" }
+    volumes: [jenkins_home:/var/jenkins_home]
+  sonarqube:
+    image: sonarqube:10.6-community
+    ports: ["9000:9000"]
+    volumes: [sonar_data:/opt/sonarqube/data]
+volumes: { jenkins_home: {}, sonar_data: {} }
