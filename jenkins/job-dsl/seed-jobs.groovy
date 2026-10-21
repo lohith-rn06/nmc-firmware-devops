@@ -6,7 +6,7 @@ multibranchPipelineJob('nmc/nmc-firmware') {
   branchSources {
     github {
       id('nmc-firmware')
-      repoOwner('your-org'); repository('nmc-firmware-devops')
+      repoOwner('lohith-rn06'); repository('nmc-firmware-devops')
       scanCredentialsId('github-app')
     }
   }
@@ -21,8 +21,8 @@ multibranchPipelineJob('nmc/nmc-firmware-release') {
     branchSource {
       source {
         github {
-          id('nmc-release'); repoOwner('your-org'); repository('nmc-firmware-devops')
-          credentialsId('github-app'); repositoryUrl('https://github.com/your-org/nmc-firmware-devops')
+          id('nmc-release'); repoOwner('lohith-rn06'); repository('nmc-firmware-devops')
+          credentialsId('github-app'); repositoryUrl('https://github.com/lohith-rn06/nmc-firmware-devops')
           traits { gitHubTagDiscovery() }
         }
       }
@@ -36,7 +36,7 @@ multibranchPipelineJob('nmc/nmc-firmware-release') {
   pipelineJob("nmc/${name}") {
     definition {
       cpsScm {
-        scm { git { remote { url('https://github.com/your-org/nmc-firmware-devops.git'); credentials('github-app') }; branch('main') } }
+        scm { git { remote { url('https://github.com/lohith-rn06/nmc-firmware-devops.git'); credentials('github-app') }; branch('main') } }
         scriptPath(path)
       }
     }
