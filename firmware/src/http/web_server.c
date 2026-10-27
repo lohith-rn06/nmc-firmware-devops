@@ -96,8 +96,10 @@ static void handle(int c)
     if (!strcmp(method, "GET") && !strcmp(path, "/api/version")) {
         char f[300];
         features_json(f, sizeof f);
-        snprintf(body, sizeof body, "{\"model\":\"%s\",\"version\":\"%s\",\"git\":\"%s\",\"features\":%s}", NMC_MODEL,
-                 NMC_VERSION, NMC_GIT_SHA, f);
+        ups_data_t d;
+        ups_get(&d);
+        snprintf(body, sizeof body, "{\"model\":\"%s\",\"version\":\"%s\",\"git\":\"%s\",\"uptime_s\":%u,\"features\":%s}",
+                 NMC_MODEL, NMC_VERSION, NMC_GIT_SHA, d.uptime_s, f);
         send_resp(c, 200, "OK", "application/json", body, NULL);
         return;
     }
